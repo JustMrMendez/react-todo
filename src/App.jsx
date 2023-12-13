@@ -1,64 +1,65 @@
 import { useState, useEffect } from "react";
 import "./App.css";
+import {
+	addTodo,
+	deleteTodo,
+	updateTodoState,
+	updateTodoText,
+} from "./lib/todosSlice";
+import { useSelector } from "react-redux";
+import { useDispatch } from "react-redux";
+
+import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "./lib/firebase";
-import { collection, getDocs, setDoc } from "firebase/firestore"; 
 
 function App() {
-	const [todo, setTodo] = useState([]);
+	const todos = useSelector((state) => state.todos.value);
 	const [newTodoText, setNewTodoText] = useState("");
-
-	const updateTodoState = (id, state) => {
-		const newTodo = todo.map((item) => {
-			if (item.id === id) {
-				return { ...item, done: state };
-			}
-			return item;
-		});
-		setTodo(newTodo);
-	};
-
-	const updateTodoText = (id, text) => {
-		const newTodo = todo.map((item) => {
-			if (item.id === id) {
-				return { ...item, text };
-			}
-			return item;
-		});
-		setTodo(newTodo);
-	};
-
-	const addTodo = async (text) => {
-		if (!text) return;
-		const todoReference = collection(db, "todos");
-		await setDoc(todoReference, {
-			text: text,
-			done: false,
-		});
-		const newTodo = [
-			...todo,
-			{ id: todo.length + 1, text: text, done: false },
-		];
-		setTodo(newTodo);
-	};
-
-	const deleteTodo = (id) => {
-		const newTodo = todo.filter((item) => item.id !== id);
-		setTodo(newTodo);
-	};
+	const dispatch = useDispatch();
 
 	useEffect(() => {
-		const todoReference = collection(db, "todos");
+		const unsubscribe = onSnapshot(collection(db, "todos"), (snapshot) => {
+			snapshot.docChanges().forEach((change) => {
+				switch (change.type) {
+					case "added":
+						dispatch(
+							addTodo({
+								id: change.doc.id,
+								...change.doc.data(),
+							})
+						);
+						break;
+					case "modified":
+						dispatch(
+							updateTodoText(
+								change.doc.id,
+								change.doc.data().text
+							)
+						);
+						dispatch(
+							updateTodoState(
+								change.doc.id,
+								change.doc.data().done
+							)
+						);
+						break;
+					case "removed":
+						dispatch(deleteTodo(change.doc.id));
+						break;
+					default:
+						break;
+				}
+			});
+		});
 
-		const getData = async () => {
-			const data = await getDocs(todoReference);
-			const todos = data.docs.map((doc) => ({
-				id: doc.id,
-				...doc.data(),
-			}));
-			setTodo(todos);
-		};
-		getData()
+		return unsubscribe;
 	}, []);
+
+	const handleAddTodo = async (text) => {
+		const newTodo = { text, done: false };
+		const docRef = doc(collection(db, "todos"));
+		await setDoc(docRef, newTodo);
+	};
 
 	return (
 		<div className="container">
@@ -77,22 +78,25 @@ function App() {
 					/>
 					<button
 						onClick={() => {
-							addTodo(newTodoText);
+							handleAddTodo(newTodoText);
 							setNewTodoText("");
 						}}
 						className="new-todo-button">
 						✘
 					</button>
 				</form>
-				{todo.map((item) => (
+				{todos.map((item) => (
 					<li
 						className={`todo-item ${item.done ? "done" : ""}`}
-						key={item.id}>
+						key={item.id}
+						id={item.id}>
 						<input
 							type="checkbox"
 							value={item.done}
 							onChange={(e) =>
-								updateTodoState(item.id, e.target.checked)
+								dispatch(
+									updateTodoState(item.id, e.target.checked)
+								)
 							}
 						/>
 						<input
@@ -101,11 +105,13 @@ function App() {
 							}`}
 							value={item.text}
 							onInput={(e) =>
-								updateTodoText(item.id, e.target.value)
+								dispatch(
+									updateTodoText(item.id, e.target.value)
+								)
 							}
 						/>
 						<button
-							onClick={() => deleteTodo(item.id)}
+							onClick={() => dispatch(deleteTodo(item.id))}
 							className="delete-button">
 							✘
 						</button>
