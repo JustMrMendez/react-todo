@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "./App.css";
+import { db } from "./lib/firebase";
+import { collection, getDocs, setDoc } from "firebase/firestore"; 
 
 function App() {
-	const [todo, setTodo] = useState([
-		{ id: 1, text: "Learn React", done: false },
-	]);
+	const [todo, setTodo] = useState([]);
 	const [newTodoText, setNewTodoText] = useState("");
 
 	const updateTodoState = (id, state) => {
@@ -27,7 +27,13 @@ function App() {
 		setTodo(newTodo);
 	};
 
-	const addTodo = (text) => {
+	const addTodo = async (text) => {
+		if (!text) return;
+		const todoReference = collection(db, "todos");
+		await setDoc(todoReference, {
+			text: text,
+			done: false,
+		});
 		const newTodo = [
 			...todo,
 			{ id: todo.length + 1, text: text, done: false },
@@ -40,9 +46,25 @@ function App() {
 		setTodo(newTodo);
 	};
 
+	useEffect(() => {
+		const todoReference = collection(db, "todos");
+
+		const getData = async () => {
+			const data = await getDocs(todoReference);
+			const todos = data.docs.map((doc) => ({
+				id: doc.id,
+				...doc.data(),
+			}));
+			setTodo(todos);
+		};
+		getData()
+	}, []);
+
 	return (
 		<div className="container">
-			<h1 style={{ color: "white", fontSize: "4rem" }}>{"<"}WON&apos;T DO LIST{" />"}</h1>
+			<h1 style={{ color: "white", fontSize: "4rem" }}>
+				{"<"}WON&apos;T DO LIST{" />"}
+			</h1>
 			<ul className="todo-list">
 				<form
 					onSubmit={(e) => e.preventDefault()}
