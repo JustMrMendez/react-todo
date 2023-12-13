@@ -1,54 +1,85 @@
-import { createSlice } from "@reduxjs/toolkit";
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import {
+	collection,
+	addDoc,
+	doc,
+	updateDoc,
+	deleteDoc,
+	getDocs,
+} from "firebase/firestore";
+import { db } from "./firebase";
+
+const getTodos = async () => {
+	const todoReference = collection(db, "todos");
+	const data = await getDocs(todoReference);
+	return data.docs.map((doc) => ({
+		id: doc.id,
+		...doc.data(),
+	}));
+};
+
+// Async action for adding a todo
+export const addTodo = createAsyncThunk("todos/addTodo", async (text) => {
+	const docRef = await addDoc(collection(db, "todos"), { text, done: false });
+	return { id: docRef.id, text, done: false };
+});
+
+// Async action for deleting a todo
+export const deleteTodo = createAsyncThunk(
+	"todos/deleteTodo",
+	async (todoId) => {
+		await deleteDoc(doc(db, "todos", todoId));
+		return todoId;
+	}
+);
+
+// Async action for updating todo state
+export const updateTodo = createAsyncThunk(
+	"todos/updateTodo",
+	async ({ id, state, text }) => {
+		await updateDoc(doc(db, "todos", id), { done: state, text });
+		return { id, state, text };
+	}
+);
 
 export const todosSlice = createSlice({
 	name: "todos",
 	initialState: {
-		value: [],
+		value: await getTodos(),
 	},
 	reducers: {
-		addTodo(state, action) {
-			if (!action.payload) return;
-			state.value.push(action.payload);
-		},
-
-		deleteTodo(state, action) {
-			state.value = state.value.filter(
-				(todo) => todo.id !== action.payload
+		addTodoFromFirestore: (state, action) => {
+			const todoExists = state.value.some(
+				(todo) => todo.id === action.payload.id
 			);
+			if (!todoExists) {
+				state.value.push(action.payload);
+			}
 		},
-
-		updateTodoState: {
-			reducer(state, action) {
-				state.value = state.value.map((todo) => {
-					if (todo.id === action.payload.id) {
-						return { ...todo, done: action.payload.state };
-					}
-					return todo;
-				});
-			},
-			prepare(id, state) {
-				return { payload: { id, state } };
-			},
-		},
-
-		updateTodoText: {
-			reducer(state, action) {
-				state.value = state.value.map((todo) => {
-					if (todo.id === action.payload.id) {
-						return { ...todo, text: action.payload.text };
-					}
-					return todo;
-				});
-			},
-			prepare(id, text) {
-				return { payload: { id, text } };
-			},
-		},
+	},
+	extraReducers: (builder) => {
+		builder
+			.addCase(addTodo.fulfilled, (state, action) => {
+				state.value.push(action.payload);
+			})
+			.addCase(deleteTodo.fulfilled, (state, action) => {
+				state.value = state.value.filter(
+					(todo) => todo.id !== action.payload
+				);
+			})
+			.addCase(updateTodo.fulfilled, (state, action) => {
+				state.value = state.value.map((todo) =>
+					todo.id === action.payload.id
+						? {
+								...todo,
+								text: action.payload.text,
+								done: action.payload.state,
+						  }
+						: todo
+				);
+			});
 	},
 });
 
-// Action creators are generated for each case reducer function
-export const { addTodo, deleteTodo, updateTodoState, updateTodoText } =
-	todosSlice.actions;
-
+export const { addTodoFromFirestore } = todosSlice.actions;
 export default todosSlice.reducer;

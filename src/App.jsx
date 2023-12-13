@@ -2,14 +2,13 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import {
 	addTodo,
+	addTodoFromFirestore,
 	deleteTodo,
-	updateTodoState,
-	updateTodoText,
+	updateTodo,
 } from "./lib/todosSlice";
 import { useSelector } from "react-redux";
 import { useDispatch } from "react-redux";
-
-import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "./lib/firebase";
 
 function App() {
@@ -20,31 +19,15 @@ function App() {
 	useEffect(() => {
 		const unsubscribe = onSnapshot(collection(db, "todos"), (snapshot) => {
 			snapshot.docChanges().forEach((change) => {
+				const todoData = { id: change.doc.id, ...change.doc.data() };
+
 				switch (change.type) {
-					case "added":
-						dispatch(
-							addTodo({
-								id: change.doc.id,
-								...change.doc.data(),
-							})
-						);
-						break;
 					case "modified":
-						dispatch(
-							updateTodoText(
-								change.doc.id,
-								change.doc.data().text
-							)
-						);
-						dispatch(
-							updateTodoState(
-								change.doc.id,
-								change.doc.data().done
-							)
-						);
+						dispatch(updateTodo.fulfilled(todoData));
+						// If there are other fields that can be modified, handle them similarly
 						break;
 					case "removed":
-						dispatch(deleteTodo(change.doc.id));
+						dispatch(deleteTodo.fulfilled(todoData.id));
 						break;
 					default:
 						break;
@@ -52,14 +35,8 @@ function App() {
 			});
 		});
 
-		return unsubscribe;
-	}, []);
-
-	const handleAddTodo = async (text) => {
-		const newTodo = { text, done: false };
-		const docRef = doc(collection(db, "todos"));
-		await setDoc(docRef, newTodo);
-	};
+		return () => unsubscribe();
+	}, [dispatch, todos]);
 
 	return (
 		<div className="container">
@@ -78,7 +55,7 @@ function App() {
 					/>
 					<button
 						onClick={() => {
-							handleAddTodo(newTodoText);
+							dispatch(addTodo(newTodoText));
 							setNewTodoText("");
 						}}
 						className="new-todo-button">
@@ -95,7 +72,10 @@ function App() {
 							value={item.done}
 							onChange={(e) =>
 								dispatch(
-									updateTodoState(item.id, e.target.checked)
+									updateTodo({
+										...item,
+										done: e.target.checked,
+									})
 								)
 							}
 						/>
@@ -106,7 +86,11 @@ function App() {
 							value={item.text}
 							onInput={(e) =>
 								dispatch(
-									updateTodoText(item.id, e.target.value)
+									updateTodo({
+										...item,
+										text: e.target.value,
+										id: item.id,
+									})
 								)
 							}
 						/>
